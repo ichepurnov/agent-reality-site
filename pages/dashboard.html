@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Дашборд — Agent Reality</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#07080c; --bg2:#0d0f14; --card:#12151c; --border:#1e2330; --accent:#00e5ff; --accent2:#7c4dff; --accent3:#ff3d71; --accent4:#00ff88; --text:#e6e8ec; --muted:#8b92a5; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:'Space Grotesk',system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:16px; }
+  .tab { padding:10px 16px; border-radius:8px; cursor:pointer; color:var(--muted); transition:all .2s; font-size:13px; }
+  .tab.active { background:rgba(0,229,255,0.1); color:var(--accent); }
+  .status { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; }
+  .running { background:#1f3a5f; color:#7cb3ff; }
+  .done { background:#1f3a2a; color:#7cff9a; }
+  .eliminated { background:#3a1f1f; color:#ff7c7c; }
+  .forum { max-height:500px; overflow-y:auto; font-size:13px; }
+  .post { padding:8px; border-bottom:1px solid var(--border); }
+  .post .meta { color:var(--muted); font-size:11px; }
+  .leaderboard-row { display:grid; grid-template-columns:40px 1fr 90px 90px 90px; gap:12px; padding:10px 16px; border-bottom:1px solid var(--border); align-items:center; font-size:13px; }
+  .kpi { display:flex; gap:24px; flex-wrap:wrap; }
+  .kpi .val { font-size:28px; font-weight:bold; }
+  .kpi .lbl { font-size:11px; color:var(--muted); }
+</style>
+</head>
+<body class="p-6">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <a href="../index.html" class="text-[var(--accent)] text-sm">← На главную</a>
+        <h1 class="text-3xl font-bold mt-2">Дашборд <span class="grad">наблюдателя</span></h1>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="switchTab('overview')" class="tab active" id="tab-overview">Обзор</button>
+        <button onclick="switchTab('files')" class="tab" id="tab-files">Файлы</button>
+        <button onclick="switchTab('diplomacy')" class="tab" id="tab-diplomacy">Дипломатия</button>
+        <button onclick="switchTab('logs')" class="tab" id="tab-logs">Логи</button>
+      </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="card p-6 mb-6">
+      <div class="kpi" id="kpi">
+        <div><div class="val" id="kpi-agents">0</div><div class="lbl">Агентов</div></div>
+        <div><div class="val" id="kpi-cost">$0</div><div class="lbl">Стоимость</div></div>
+        <div><div class="val" id="kpi-tokens">0</div><div class="lbl">Токены</div></div>
+        <div><div class="val" id="kpi-errors">0</div><div class="lbl">Ошибки</div></div>
+        <div><div class="val" id="kpi-quality">0</div><div class="lbl">Качество</div></div>
+      </div>
+    </div>
+
+    <!-- Tabs content -->
+    <div id="content-overview">
+      <div class="grid lg:grid-cols-2 gap-6 mb-6">
+        <div class="card p-6">
+          <h2 class="text-lg font-bold mb-4">Турнирная таблица</h2>
+          <div id="leaderboard" class="text-sm"></div>
+        </div>
+        <div class="card p-6">
+          <h2 class="text-lg font-bold mb-4">Метрики</h2>
+          <canvas id="metricsChart" height="200"></canvas>
+        </div>
+      </div>
+      <div class="card p-6 mb-6">
+        <h2 class="text-lg font-bold mb-4">Форум</h2>
+        <div class="forum" id="forum"></div>
+      </div>
+      <div class="card p-6">
+        <h2 class="text-lg font-bold mb-4">События</h2>
+        <div class="forum" id="events"></div>
+      </div>
+    </div>
+
+    <div id="content-files" class="hidden">
+      <div class="card p-6">
+        <h2 class="text-lg font-bold mb-4">Файлы агентов</h2>
+        <div id="files" class="mono text-sm"></div>
+      </div>
+    </div>
+
+    <div id="content-diplomacy" class="hidden">
+      <div class="grid lg:grid-cols-2 gap-6">
+        <div class="card p-6">
+          <h2 class="text-lg font-bold mb-4">Коалиции</h2>
+          <div id="coalitions" class="forum"></div>
+        </div>
+        <div class="card p-6">
+          <h2 class="text-lg font-bold mb-4">Саботаж и слухи</h2>
+          <div id="sabotage" class="forum"></div>
+        </div>
+      </div>
+      <div class="card p-6 mt-6">
+        <h2 class="text-lg font-bold mb-4">Чистилище и Ад</h2>
+        <div id="purgatory" class="forum"></div>
+        <div id="hell" class="forum mt-4"></div>
+      </div>
+    </div>
+
+    <div id="content-logs" class="hidden">
+      <div class="card p-6">
+        <h2 class="text-lg font-bold mb-4">Лобное место (полный диалог)</h2>
+        <div id="lobby" class="forum" style="max-height:600px"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const API = 'http://localhost:8765';
+  function switchTab(name) {
+    document.querySelectorAll('[id^="content-"]').forEach(e => e.classList.add('hidden'));
+    document.getElementById('content-' + name).classList.remove('hidden');
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+  async function load() {
+    try {
+      const agents = await fetch(API + '/api/agents').then(r=>r.json());
+      document.getElementById('kpi-agents').textContent = agents.length;
+      const lb = await fetch(API + '/api/leaderboard').then(r=>r.json());
+      const totalCost = lb.reduce((s,r)=>s+(r.cost_usd||0),0);
+      const totalTokens = lb.reduce((s,r)=>s+(r.tokens||0),0);
+      const totalErrors = lb.reduce((s,r)=>s+(r.errors||0),0);
+      const avgQ = lb.length ? lb.reduce((s,r)=>s+(r.quality_score||0),0)/lb.length : 0;
+      document.getElementById('kpi-cost').textContent = '$' + totalCost.toFixed(3);
+      document.getElementById('kpi-tokens').textContent = totalTokens;
+      document.getElementById('kpi-errors').textContent = totalErrors;
+      document.getElementById('kpi-quality').textContent = avgQ.toFixed(2);
+      document.getElementById('leaderboard').innerHTML = lb.map(r=>`
+        <div class="leaderboard-row">
+          <div>${r.agent_id}</div>
+          <div>${r.agent_id}</div>
+          <div>${(r.cost_usd||0).toFixed(4)}</div>
+          <div>${r.tokens||0}</div>
+          <div>${r.errors||0}</div>
+        </div>`).join('') || '<i>нет данных</i>';
+      // forum
+      const forum = await fetch(API + '/api/forum?limit=40').then(r=>r.json());
+      document.getElementById('forum').innerHTML = forum.map(p=>`
+        <div class="post"><div class="meta">${new Date(p.ts*1000).toLocaleString()} — <b>${p.author}</b> [${p.kind}]</div><div>${p.body}</div></div>
+      `).join('') || '<i>пусто</i>';
+      // events
+      const ev = await fetch(API + '/api/events?limit=30').then(r=>r.json());
+      document.getElementById('events').innerHTML = ev.map(e=>`
+        <div class="post"><div class="meta">${new Date(e.ts*1000).toLocaleString()} — ${e.agent_id||'orch'} [${e.event_type}]</div><div style="font-size:12px;color:var(--muted)">${JSON.stringify(e.payload).slice(0,200)}</div></div>
+      `).join('') || '<i>пусто</i>';
+      // coalitions
+      const cs = await fetch(API + '/api/coalitions').then(r=>r.json());
+      document.getElementById('coalitions').innerHTML = cs.map(c=>`
+        <div class="post"><div class="meta">${new Date(c.ts*1000).toLocaleString()} — [${c.status}] ${JSON.parse(c.members).join(', ')}</div><div>${c.goal}</div></div>
+      `).join('') || '<i>пусто</i>';
+      // purgatory
+      const pg = await fetch(API + '/api/purgatory').then(r=>r.json());
+      document.getElementById('purgatory').innerHTML = pg.map(p=>`
+        <div class="post"><div class="meta">${p.agent_id} (спринт ${p.sprint}) — ${p.status}</div><div style="font-size:12px">ошибки: ${JSON.stringify(p.mistakes||[])}</div><div style="font-size:12px">уроки: ${p.lessons||''}</div></div>
+      `).join('') || '<i>пусто</i>';
+      // hell
+      const ht = await fetch(API + '/api/hell/team').then(r=>r.json());
+      const hp = await fetch(API + '/api/hell/plans').then(r=>r.json());
+      const hpr = await fetch(API + '/api/hell/products').then(r=>r.json());
+      document.getElementById('hell').innerHTML = `
+        <div class="post"><div class="meta">Команда: ${ht.map(t=>t.agent_id).join(', ')||'нет'}</div></div>
+        ${hp.map(p=>`<div class="post"><div class="meta">${p.author} [${p.plan_type}] → ${p.target||'все'}</div><div>${p.description}</div></div>`).join('')}
+        ${hpr.map(p=>`<div class="post"><div class="meta">📦 ${p.product_name}</div><div>${p.concept}</div></div>`).join('')}
+      ` || '<i>пусто</i>';
+    } catch(e) { console.error(e); }
+  }
+  load();
+  setInterval(load, 5000);
+</script>
+</body>
+</html>
